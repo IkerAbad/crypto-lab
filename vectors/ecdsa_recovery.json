@@ -1,0 +1,40 @@
+{
+  "source": "Wycheproof ecdsa_secp256k1_sha256_test.json",
+  "source_url": "https://raw.githubusercontent.com/C2SP/wycheproof/master/testvectors_v1/ecdsa_secp256k1_sha256_test.json",
+  "source_sha256": "43db761c0a2eae71fb0755d355d5130e28ce64a5b07846cf27e7072082597a81",
+  "notes": "Public keys and signatures are copied from valid Wycheproof cases; recovery ids were derived from the known public keys.",
+  "cases": [
+    {
+      "name": "Wycheproof tcId 1: pseudorandom signature",
+      "tc_id": 1,
+      "public_key": "04782c8ed17e3b2a783b5464f33b09652a71c678e05ec51e84e2bcfc663a3de963af9acb4280b8c7f7c42f4ef9aba6245ec1ec1712fd38a0fa96418d8cd6aa6152",
+      "message": "",
+      "signature_der": "3046022100f80ae4f96cdbc9d853f83d47aae225bf407d51c56b7776cd67d0dc195d99a9dc022100b303e26be1f73465315221f0b331528807a1a9b6eb068ede6eebeaaa49af8a36",
+      "recovery_id": 0
+    },
+    {
+      "name": "Wycheproof tcId 295: Edge case for Shamir multiplication",
+      "tc_id": 295,
+      "public_key": "04b838ff44e5bc177bf21189d0766082fc9d843226887fc9760371100b7ee20a6ff0c9d75bfba7b31a6bca1974496eeb56de357071955d83c4b1badaa0b21832e9",
+      "message": "3235353835",
+      "signature_der": "3045022100dd1b7d09a7bd8218961034a39a87fecf5314f00c4d25eb58a07ac85e85eab516022035138c401ef8d3493d65c9002fe62b43aee568731b744548358996d9cc427e06",
+      "recovery_id": 0
+    },
+    {
+      "name": "Wycheproof tcId 350: k*G has a large x-coordinate",
+      "tc_id": 350,
+      "public_key": "0407310f90a9eae149a08402f54194a0f7b4ac427bf8d9bd6c7681071dc47dc36226a6d37ac46d61fd600c0bf1bff87689ed117dda6b0e59318ae010a197a26ca0",
+      "message": "313233343030",
+      "signature_der": "30360211014551231950b75fc4402da1722fc9baeb022100fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036413e",
+      "recovery_id": 3
+    },
+    {
+      "name": "Wycheproof tcId 427: point duplication during verification",
+      "tc_id": 427,
+      "public_key": "042ea7133432339c69d27f9b267281bd2ddd5f19d6338d400a05cd3647b157a3853547808298448edb5e701ade84cd5fb1ac9567ba5e8fb68a6b933ec4b5cc84cc",
+      "message": "313233343030",
+      "signature_der": "3045022032b0d10d8d0e04bc8d4d064d270699e87cffc9b49c5c20730e1c26f6105ddcda022100d612c2984c2afa416aa7f2882a486d4a8426cb6cfc91ed5b737278f9fca8be68",
+      "recovery_id": 1
+    }
+  ]
+}

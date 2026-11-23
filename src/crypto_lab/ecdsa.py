@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .bigint import BigInt, mod_inverse
 from .curves import SECP256K1, AffinePoint, Curve
-from .encoding import decode_der_signature, encode_der_signature
+from .encoding import decode_der_signature, encode_der_signature, parse_point
 from .hashing import HashFunction, sha256
 from .rfc6979 import bits2int, generate_nonces
 from .scalarmult import montgomery_ladder
@@ -132,3 +132,62 @@ def verify(
         return False
     assert combined.x is not None
     return BigInt.from_int(combined.x.to_int()) % order == signature.r
+
+
+def recover_public_key(
+    curve: Curve,
+    message: bytes,
+    signature: Signature,
+    recovery_id: int,
+    hash_function: HashFunction = sha256,
+) -> PublicKey:
+    """Recover the signing public key from a signature and a recovery id.
+
+    recovery_id bit 1 selects the x-coordinate r or r+n; bit 0 selects the
+    parity of the ephemeral point R. Values 2 and 3 are usually invalid because
+    r+n must still be below the field prime.
+    """
+    order = BigInt.from_int(curve.n)
+    if recovery_id not in (0, 1, 2, 3):
+        raise ECDSAError("recovery id must be between 0 and 3")
+    if not (BigInt.ZERO < signature.r < order and BigInt.ZERO < signature.s < order):
+        raise ECDSAError("signature values are outside [1, n-1]")
+
+    x_value = signature.r.to_int() + (recovery_id >> 1) * curve.n
+    if x_value >= curve.p:
+        raise ECDSAError("recovery x-coordinate is outside the field")
+    prefix = 0x02 | (recovery_id & 1)
+    point_r = parse_point(curve, bytes([prefix]) + x_value.to_bytes(32, "big"))
+
+    digest = hash_function(message)
+    z = BigInt.from_int(bits2int(digest, order.bit_length()))
+    r_inverse = mod_inverse(signature.r, order)
+    sr = montgomery_ladder(curve, signature.s, point_r)
+    zg = montgomery_ladder(curve, z, curve.g)
+    difference = curve.add_affine(sr, curve.negate(zg))
+    if difference.is_infinity:
+        raise ECDSAError("recovery produced the point at infinity")
+    point_q = montgomery_ladder(curve, r_inverse, difference)
+    public_key = PublicKey(curve, point_q)
+    if not verify(public_key, message, signature, hash_function):
+        raise ECDSAError("recovered key does not verify the signature")
+    return public_key
+
+
+def find_recovery_id(
+    public_key: PublicKey,
+    message: bytes,
+    signature: Signature,
+    hash_function: HashFunction = sha256,
+) -> int | None:
+    """Return the recovery id that yields public_key, or None."""
+    for candidate in range(4):
+        try:
+            recovered = recover_public_key(
+                public_key.curve, message, signature, candidate, hash_function
+            )
+        except (ECDSAError, ValueError):
+            continue
+        if recovered.point == public_key.point:
+            return candidate
+    return None
