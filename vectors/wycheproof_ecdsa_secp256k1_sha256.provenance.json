@@ -1,0 +1,13 @@
+{
+  "source": "Wycheproof ecdsa_secp256k1_sha256_test.json",
+  "source_url": "https://raw.githubusercontent.com/C2SP/wycheproof/master/testvectors_v1/ecdsa_secp256k1_sha256_test.json",
+  "fetched_at": "2026-11-23",
+  "source_sha256": "43db761c0a2eae71fb0755d355d5130e28ce64a5b07846cf27e7072082597a81",
+  "subset_file": "vectors/wycheproof_ecdsa_secp256k1_sha256.json",
+  "subset_sha256": "c20202c6f05e9d07250dcf0b87e110ff79cee792a2d5cb576ededc7879779a5d",
+  "case_count": 75,
+  "valid_count": 30,
+  "invalid_count": 45,
+  "selection": "Every Wycheproof flag combination is represented. Combinations with at most 10 tests are included whole; larger combinations contribute three evenly spaced tests. ArithmeticError contributes both valid and invalid cases, and all ValidSignature, PointDuplication, RangeCheck, IntegerOverflow, ModifiedInteger, BerEncodedSignature and SmallRandS tests are kept.",
+  "notes": "tcIds and test objects are copied unchanged from the upstream file."
+}

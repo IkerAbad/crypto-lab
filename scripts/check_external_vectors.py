@@ -1,11 +1,13 @@
 """Download official documents and re-check the vendored vectors against them.
 
-Used by the dedicated CI job. It also runs the complete Wycheproof
-secp256k1/SHA-256 verification corpus, which is not vendored.
+Used by the dedicated CI job. It verifies the pinned Wycheproof source hash,
+checks that every vendored subset case and public key is identical to its
+upstream test object, and runs the complete 476-case secp256k1/SHA-256 corpus.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -24,10 +26,7 @@ from crypto_lab.hashing import hmac_sha256  # noqa: E402
 RFC4231_URL = "https://www.rfc-editor.org/rfc/rfc4231.txt"
 RFC6979_URL = "https://www.rfc-editor.org/rfc/rfc6979.txt"
 BIP32_URL = "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0032.mediawiki"
-WYCHEPROOF_URL = (
-    "https://raw.githubusercontent.com/C2SP/wycheproof/master/"
-    "testvectors_v1/ecdsa_secp256k1_sha256_test.json"
-)
+WYCHEPROOF_PROVENANCE = ROOT / "vectors" / "wycheproof_ecdsa_secp256k1_sha256.provenance.json"
 
 
 def download(url: str, destination: Path) -> str:
@@ -101,7 +100,36 @@ def check_bip32(text: str) -> None:
 
 
 def check_wycheproof(path: Path) -> None:
-    data = json.loads(path.read_text())
+    provenance = json.loads(WYCHEPROOF_PROVENANCE.read_text())
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != provenance["source_sha256"]:
+        raise SystemExit(
+            f"Wycheproof source hash changed: expected {provenance['source_sha256']}, got {digest}"
+        )
+
+    data = json.loads(raw)
+    upstream_tests: dict[int, dict[str, object]] = {}
+    upstream_keys: dict[int, dict[str, object]] = {}
+    for upstream_group in data["testGroups"]:
+        for upstream_test in upstream_group["tests"]:
+            tc_id = int(upstream_test["tcId"])
+            upstream_tests[tc_id] = upstream_test
+            upstream_keys[tc_id] = upstream_group["publicKey"]
+
+    subset = json.loads((ROOT / provenance["subset_file"]).read_text())
+    subset_cases = 0
+    for group in subset["testGroups"]:
+        for test in group["tests"]:
+            subset_cases += 1
+            tc_id = int(test["tcId"])
+            if upstream_tests.get(tc_id) != test:
+                raise SystemExit(f"vendored Wycheproof test {tc_id} differs upstream")
+            if upstream_keys.get(tc_id) != group["publicKey"]:
+                raise SystemExit(f"vendored Wycheproof key for test {tc_id} differs upstream")
+    if subset_cases != provenance["case_count"]:
+        raise SystemExit("vendored Wycheproof case count does not match provenance")
+
     total = 0
     valid = 0
     invalid = 0
@@ -126,7 +154,10 @@ def check_wycheproof(path: Path) -> None:
                 raise SystemExit(f"Wycheproof mismatch at tcId {test['tcId']}")
     if total < 400:
         raise SystemExit("Wycheproof corpus is unexpectedly small")
-    print(f"Wycheproof: {total} cases verified ({valid} valid, {invalid} invalid)")
+    print(
+        f"Wycheproof: {subset_cases}-case subset matches upstream; "
+        f"{total} full cases verified ({valid} valid, {invalid} invalid)"
+    )
 
 
 def main() -> None:
@@ -136,7 +167,8 @@ def main() -> None:
         rfc6979 = download(RFC6979_URL, target / "rfc6979.txt")
         bip32 = download(BIP32_URL, target / "bip32.mediawiki")
         wycheproof_path = target / "wycheproof.json"
-        download(WYCHEPROOF_URL, wycheproof_path)
+        provenance = json.loads(WYCHEPROOF_PROVENANCE.read_text())
+        download(provenance["source_url"], wycheproof_path)
 
         check_rfc4231(rfc4231)
         check_rfc6979(rfc6979)

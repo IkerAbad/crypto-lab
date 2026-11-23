@@ -45,5 +45,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
+      - name: Check vendored Wycheproof subset
+        run: python scripts/vendor_wycheproof.py --check
       - name: Check current RFC, BIP and Wycheproof vectors
         run: python scripts/check_external_vectors.py

@@ -12,11 +12,11 @@ from crypto_lab.ecdsa import Signature, private_key_from_int, sign, verify
 from crypto_lab.encoding import encode_ec_private_key_pem, encode_ec_public_key_pem
 
 OPENSSL = shutil.which("openssl")
-pytestmark = pytest.mark.skipif(OPENSSL is None, reason="OpenSSL is not installed")
 
 
 def _run(arguments: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    assert OPENSSL is not None
+    if OPENSSL is None:
+        pytest.fail("OpenSSL is required for the interoperability tests", pytrace=False)
     return subprocess.run(
         [OPENSSL, *arguments],
         cwd=cwd,
