@@ -55,9 +55,12 @@ python scripts/timing_demo.py
 python scripts/check_external_vectors.py
 ```
 
-The last script downloads RFC 4231, RFC 6979, BIP32 and the Wycheproof corpus, then checks
-the vendored values against the current official documents and runs all 476 Wycheproof
-secp256k1/SHA-256 cases. It is also the second CI job.
+The last script downloads RFC 4231, RFC 6979, BIP32 and the Wycheproof corpus, verifies the
+pinned source hash, checks that every vendored Wycheproof case and public key is identical
+to its upstream test object, and runs all 476 secp256k1/SHA-256 cases. It is also the second
+CI job.
+`python scripts/vendor_wycheproof.py --check` regenerates the 75-case subset in memory and
+confirms that the committed subset and provenance files still match.
 
 ## Test vectors
 
@@ -67,7 +70,7 @@ secp256k1/SHA-256 cases. It is also the second CI job.
 | RFC 6979 Appendix A.2.5 | P-256/SHA-256 public key, deterministic nonces, `r`, `s` for both official messages, plus deterministic signing |
 | BIP32 test vectors 1, 2 and 3 | Master key and first child, including hardened and non-hardened derivation and leading-zero retention |
 | SEC 2 | secp256k1 field, order, generator and curve equation; known small multiples of G |
-| Wycheproof | 476 ECDSA secp256k1/SHA-256 cases, 168 valid and 308 invalid, fetched in the external-vector CI job |
+| Wycheproof | 75-case vendored subset, 30 valid and 45 invalid, covering all 18 flag combinations; the external-vector job checks the pinned source hash and runs all 476 cases |
 
 The vendored files live in `vectors/`. The external checker
 (`scripts/check_external_vectors.py`) records the official URLs it downloads and re-checks
@@ -108,24 +111,48 @@ keep `Z` and perform one inversion at the end, when converting back to affine co
 Doubling has a specialised `a = 0` path for secp256k1 and a general path for P-256. Addition
 uses the standard Jacobian and mixed Jacobian-affine formulas.
 
-A local run of `python scripts/benchmark.py` on the development machine (Ryzen 9 5900X,
-Windows 11, CPython 3.12.10) gave:
+Measured with `python scripts/benchmark.py` on 2026-11-23. Hardware: AMD Ryzen 9 5900X
+(12 cores / 24 threads), 32 GB DDR4-3600 CL16, Windows 11 build 10.0.26300, CPython 3.12.10.
 
 | Scalar bits | Affine double-and-add | Jacobi double-and-add | Sliding window (w=4) | Montgomery ladder |
 |---:|---:|---:|---:|---:|
-| 32 | 0.6068 s | 0.0298 s | 0.0384 s | 0.1593 s |
-| 64 | 1.1076 s | 0.0469 s | 0.0557 s | 0.2086 s |
-| 128 | 2.1023 s | 0.0847 s | 0.0914 s | 0.2127 s |
-| 256 | 4.4300 s | 0.1855 s | 0.1124 s | 0.2400 s |
+| 32 | 0.2586 s | 0.0143 s | 0.0181 s | 0.0864 s |
+| 64 | 0.4676 s | 0.0237 s | 0.0247 s | 0.0923 s |
+| 128 | 0.9245 s | 0.0374 s | 0.0395 s | 0.0992 s |
+| 256 | 1.8566 s | 0.0653 s | 0.0589 s | 0.1158 s |
 
-The 256-bit affine result is roughly 24 times slower than Jacobi. At 256 bits the sliding
+The 256-bit affine result is roughly 28 times slower than Jacobi. At 256 bits the sliding
 window beats plain Jacobi double-and-add because it trades precomputation for fewer
 additions. The ladder is slower by design: it executes a fixed number of additions and
 doublings and uses branch-free formulas, so it does more work than a variable-time method.
 
-For the raw arithmetic layer, 256-bit modular multiplication measured about 28.4 us with
-schoolbook multiplication plus Knuth division, against 14.9 us with Montgomery
-multiplication. These numbers are indicative, not a benchmark suite.
+Per-operation medians from the same run:
+
+| Operation | Median time |
+|---|---:|
+| Field addition | 1.90 us |
+| Field subtraction | 2.40 us |
+| Field multiplication | 8.10 us |
+| Field inversion | 4.53 ms |
+| Field square root | 4.49 ms |
+| Point doubling (affine) | 4.63 ms |
+| Point doubling (Jacobi) | 146.00 us |
+| Point addition (affine) | 4.62 ms |
+| Point addition (Jacobi) | 224.30 us |
+| Mixed addition (Jacobi + affine) | 174.70 us |
+| Scalar multiplication (sliding w=4, 64-bit scalar) | 26.46 ms |
+| Scalar multiplication (ladder, 64-bit scalar) | 93.99 ms |
+| ECDSA sign | 119.56 ms |
+| ECDSA verify | 338.33 ms |
+| ECDSA recover public key | 587.06 ms |
+| SHA-256 (1 KiB) | 2.57 ms |
+| HMAC-SHA256 (1 KiB) | 3.01 ms |
+| BIP32 master from seed | 778.50 us |
+| BIP32 first hardened child | 119.28 ms |
+
+For the raw arithmetic layer, 256-bit modular multiplication measured about 16.4 us with
+schoolbook multiplication plus Knuth division, against 8.4 us with Montgomery
+multiplication. These are single-machine medians, not a portable benchmark suite.
 
 ## Scalar multiplication and the timing attack
 
@@ -154,8 +181,8 @@ are outside a first-year course, but the consequence is simple: the nonce must n
 | n-1 | double-and-add | 256 | 0 | 190 | 1 |
 | n-1 | Montgomery ladder | 256 | 256 | 0 | 1 |
 
-The same run measured about 0.09 s for double-and-add with one set bit and 0.20 s with
-`n-1`, while the ladder stayed near 0.23-0.24 s. The operation counts are the reliable
+The same run measured about 0.047 s for double-and-add with one set bit and 0.080 s with
+`n-1`, while the ladder stayed near 0.117-0.122 s. The operation counts are the reliable
 result. Wall-clock numbers on CPython and a general-purpose OS are noisy.
 
 The countermeasure used by ECDSA is the Montgomery ladder:
@@ -212,6 +239,31 @@ The tests verify both versions, check that `low_s=True` rejects the high-S versi
 check that normalising returns the original low-S signature. This is why Bitcoin-style code
 normalises signatures before accepting them.
 
+### Public-key recovery
+
+`recover_public_key` reconstructs the signing key from `(message, r, s, recovery_id)`. The
+recovery id has two bits:
+
+- bit 1 chooses the ephemeral x-coordinate: `r` for ids 0 and 1, `r + n` for ids 2 and 3;
+- bit 0 chooses the parity of the ephemeral point `R`.
+
+The candidate point `R` is decompressed from `x`, then:
+
+```
+Q = r^(-1) * (s*R - z*G)
+```
+
+where `z` is the truncated message hash. The function validates that the recovered key is
+on the curve and that it verifies the signature. `find_recovery_id` tries the four possible
+ids and returns the one that matches a known public key. The test vectors are four valid
+Wycheproof cases, including one that needs `recovery_id = 3` (`r + n`), and the recovered
+coordinates are compared with the original Wycheproof public key.
+
+The recovery id is not part of an ECDSA signature. A protocol that uses recovery must
+transmit it separately, and a signature can have more than one syntactically valid recovery
+id unless the verifier checks the expected key. The function deliberately checks the
+resulting key against the signature instead of trusting the id alone.
+
 ## OpenSSL interoperability
 
 The test suite creates a secp256k1 key with this code, writes PEM files and a message, then
@@ -226,8 +278,8 @@ openssl dgst -sha256 -sign private.pem -out openssl.der message.bin
 ```
 
 It also asks OpenSSL to verify the high-S malleable variant, and checks that OpenSSL rejects
-a tampered message. OpenSSL 3.4.1 was used during development. The tests skip with a clear
-reason if `openssl` is not on `PATH`; the CI test job checks that it is installed.
+a tampered message. OpenSSL 3.4.1 was used during development. The tests fail, rather than
+skip, if `openssl` is not on `PATH`; the CI test job checks that it is installed.
 
 ## HMAC and BIP32
 
@@ -259,9 +311,10 @@ children, including the leading-zero cases.
 
 1. `test`: Python 3.12, install the package with development extras, run `ruff check`,
    `ruff format --check`, `mypy src` and `pytest -q`, including the OpenSSL interop tests.
-2. `external-vectors`: download the current RFC/BIP/Wycheproof material and run
-   `scripts/check_external_vectors.py`. The Wycheproof corpus is not vendored, so this job
-   is the one that exercises all 476 external ECDSA cases.
+2. `external-vectors`: download the current RFC/BIP/Wycheproof material, verify the pinned
+   Wycheproof source hash, confirm that the 75 vendored cases are unchanged upstream, and
+   run `scripts/check_external_vectors.py`. The test job runs the vendored subset on every
+   push; the external job is the one that exercises all 476 external ECDSA cases.
 
 ## Acceptance checklist
 
@@ -273,9 +326,13 @@ children, including the leading-zero cases.
 | Timing attack documented and countermeasure applied | Yes, see above and `scripts/timing_demo.py` |
 | Compressed and uncompressed point serialization | Yes, SEC1 |
 | ECDSA key generation, sign, verify, malleability check | Yes, RFC 6979 and low-S |
+| Public-key recovery from a signature | Yes, four valid Wycheproof cases, including `recovery_id = 3` |
+| Group law property tests | Yes, Hypothesis checks associativity, identity, inverse and commutativity |
 | HMAC-SHA256 and BIP32-style derivation, first layer | Yes, RFC 4231 and BIP32 vectors 1-3 |
 | Official RFC/BIP vectors pass | Yes, local tests and external-vector job |
+| Wycheproof subset is versioned with provenance and SHA-256 | Yes, 75 cases, pinned upstream hash |
 | Our signature verified by OpenSSL and vice versa | Yes, `tests/test_openssl.py` |
+| Tests pass with zero skips | Yes, 105 passed, 0 skipped |
 | README documents timing attack and countermeasure | Yes |
 | Out-of-scope warning in the first line | Yes |
 
@@ -290,11 +347,11 @@ src/crypto_lab/
   encoding.py     SEC1, DER, PEM, Base58Check
   hashing.py      SHA-256, SHA-512, RIPEMD-160, HMAC
   rfc6979.py      deterministic ECDSA nonces
-  ecdsa.py        key generation, signing, verification, low-S
+  ecdsa.py        key generation, signing, verification, recovery, low-S
   bip32.py        master key and first-level child derivation
-tests/            unit, property and OpenSSL interoperability tests
-vectors/          vendored official test vectors
-scripts/          benchmark, timing demo, external-vector checker
+tests/            unit, property, recovery and OpenSSL interoperability tests
+vectors/          vendored official vectors, Wycheproof subset and provenance
+scripts/          benchmark, timing demo, external-vector checker, Wycheproof vendor
 ```
 
 ## License
