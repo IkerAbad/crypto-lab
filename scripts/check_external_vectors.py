@@ -70,9 +70,9 @@ def check_rfc6979(text: str) -> None:
     for case in vectors["cases"]:
         message = case["message"].encode()
         signature = sign(private_key, message, low_s=False)
-        if signature.r.to_hex().upper() != case["r"]:
+        if signature.r.to_bytes(32).hex().upper() != case["r"]:
             raise SystemExit(f"RFC 6979 r mismatch for {case['message']}")
-        if signature.s.to_hex().upper() != case["s"]:
+        if signature.s.to_bytes(32).hex().upper() != case["s"]:
             raise SystemExit(f"RFC 6979 s mismatch for {case['message']}")
         for value in (case["k"], case["r"], case["s"]):
             if value not in compact:
