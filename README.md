@@ -69,8 +69,10 @@ secp256k1/SHA-256 cases. It is also the second CI job.
 | SEC 2 | secp256k1 field, order, generator and curve equation; known small multiples of G |
 | Wycheproof | 476 ECDSA secp256k1/SHA-256 cases, 168 valid and 308 invalid, fetched in the external-vector CI job |
 
-The vendored files live in `vectors/`. The source URLs are recorded in the JSON metadata
-and in `scripts/check_external_vectors.py`.
+The vendored files live in `vectors/`. The external checker
+(`scripts/check_external_vectors.py`) records the official URLs it downloads and re-checks
+the vendored values against them on every CI run. secp256k1 parameters come from SEC 2
+(https://www.secg.org/sec2-v2.pdf).
 
 ## Big integers
 
